@@ -41,6 +41,7 @@ comando processar_comando(){
 
     }else if(campo_1.compare("sair") == 0){
         com.command = EXIT_A;
+        com.nome = campo_2;
         return com;
 
     }else if(campo_1.compare("apagar") == 0){
@@ -85,37 +86,51 @@ comando processar_comando(){
     return com;
 }
 
-std::string ler_nome(){
-    std::string nome;
-    std::cin >> nome;
-    return nome;
-}
+
 
 int main() {
 
     bool loop = true;
     Disco hd = Disco();
-    //auto name = ler_nome();
     std::cout << "digite o comando:\n";
     comando comand = processar_comando();
-    switch (comand.command)
-    {
-    case LIST:
+    
+    if(comand.command == LIST){
         hd.Listar_Arquivos();
         hd.Print_space();
-        break;
-    case CREATE:
+
+    }else if(comand.command == CREATE){
         hd.Cria_Arquivo(comand.nome, comand.tamanho);
-        break;
-    case DELETE:
+
+    }else if(comand.command == DELETE){
         hd.Apaga_Arquivo(comand.nome);
-        break;
-    case EXIT_A:
+
+    }else if(comand.command == READ){
+        hd.Ler_Arquivo(comand.nome, comand.inicio, comand.fim);
+
+    }else if(comand.command == EXIT_A){
         loop = false;
-    default:
-        break;
+        Inode inode = hd.Read_inode(comand.nome);
+        std::cout << inode.nome << ":\n";
+        vector<int> blocos;
+        for(int i = 0; i < 64; i++){
+            int valor = *(reinterpret_cast<int*>(inode.blocos + (i*4)));
+            if(valor >= QNT_BLOCOS){
+                break;
+            }else{
+                blocos.push_back(valor);
+            }
+        }
+        for (int i = 0; i < blocos.size(); i++)
+        {
+            hd.Printar_Bloco(blocos[i]);
+        }
+        
+    
+        //std::cout << inode.nome << " size: " << tamanho << "\n";
     }
-    unsigned int* block;
+    
+    std::cout << "size: " << sizeof(unsigned int) << "\n";
     //hd.Montar();
     //if(hd.Is_inode_free(0)){
     //    char nome[8] = "teste";
