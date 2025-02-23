@@ -1,0 +1,5 @@
+cat /proc/sys/vm/nr_hugepages
+sudo sysctl -w vm.nr_hugepages=128
+sudo nano /etc/sysctl.conf => vm.nr_hugepages=128 <- adicionar no final do arquivo
+sudo sysctl -p
+cat /proc/sys/vm/nr_hugepages

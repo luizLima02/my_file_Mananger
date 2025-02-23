@@ -1,0 +1,2 @@
+chmod -x ARQUIVO_SH
+bash ARQUIVO_SH
