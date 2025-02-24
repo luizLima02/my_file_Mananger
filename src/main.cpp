@@ -91,26 +91,27 @@ comando processar_comando(){
 int main() {
 
     bool loop = true;
-    Disco hd = Disco();
+    Disco* hd = new Disco();
     std::cout << "digite o comando:\n";
     comando comand = processar_comando();
     
     if(comand.command == LIST){
-        hd.Listar_Arquivos();
-        hd.Print_space();
+        hd->Listar_Arquivos();
+        hd->Print_space();
 
     }else if(comand.command == CREATE){
-        hd.Cria_Arquivo(comand.nome, comand.tamanho);
+        hd->Cria_Arquivo(comand.nome, comand.tamanho);
+        std::cout << "SAIU\n";
 
     }else if(comand.command == DELETE){
-        hd.Apaga_Arquivo(comand.nome);
+        hd->Apaga_Arquivo(comand.nome);
 
     }else if(comand.command == READ){
-        hd.Ler_Arquivo(comand.nome, comand.inicio, comand.fim);
+        hd->Ler_Arquivo(comand.nome, comand.inicio, comand.fim);
 
     }else if(comand.command == EXIT_A){
         loop = false;
-        Inode inode = hd.Read_inode(comand.nome);
+        Inode inode = hd->Read_inode(comand.nome);
         std::cout << inode.nome << ":\n";
         vector<int> blocos;
         for(int i = 0; i < 64; i++){
@@ -123,15 +124,15 @@ int main() {
         }
         for (int i = 0; i < blocos.size(); i++)
         {
-            hd.Printar_Bloco(blocos[i]);
+            hd->Printar_Bloco(blocos[i]);
         }
         
     
         //std::cout << inode.nome << " size: " << tamanho << "\n";
     }
     
-    std::cout << "size: " << sizeof(unsigned int) << "\n";
-    //hd.Montar();
+    //std::cout << "\n";
+    hd->Montar();
     //if(hd.Is_inode_free(0)){
     //    char nome[8] = "teste";
     //    hd.Cria_Arquivo(nome, 10);
@@ -177,7 +178,7 @@ int main() {
     //hd.Is_inode_free(77);
     //hd.Is_inode_free(32);
     //hd.Is_inode_free(123456);
-    hd.Desmontar();
+    //hd.Desmontar();
     /**
     void *hugepage_addr = mmap(NULL, HUGEPAGE_SIZE, PROT_READ | PROT_WRITE,
                                MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
