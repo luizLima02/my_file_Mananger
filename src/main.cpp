@@ -92,16 +92,19 @@ int main() {
 
     bool loop = true;
     Disco* hd = new Disco();
+    hd->Add_File_index(std::string("teste"), (unsigned int)1578);
+    //hd->Write_File_index(std::string("teste"), 2, (unsigned int)1578);
+    //hd->Printar_Bloco(0);
     std::cout << "digite o comando:\n";
     comando comand = processar_comando();
     
+
     if(comand.command == LIST){
         hd->Listar_Arquivos();
         hd->Print_space();
 
     }else if(comand.command == CREATE){
         hd->Cria_Arquivo(comand.nome, comand.tamanho);
-        std::cout << "SAIU\n";
 
     }else if(comand.command == DELETE){
         hd->Apaga_Arquivo(comand.nome);
@@ -132,6 +135,8 @@ int main() {
     }
     
     //std::cout << "\n";
+    hd->Printar_Bloco(0);
+    std::cout << "\n";
     hd->Montar();
     //if(hd.Is_inode_free(0)){
     //    char nome[8] = "teste";

@@ -104,9 +104,9 @@ struct Inode{
     }
 
     //maximo qnt = 64
-    void set_blocos(int* vals, int qnt, int offset = 0){
+    void set_blocos(unsigned int* vals, int qnt, int offset = 0){
         for(int i = 0; i < qnt; i++){
-            std::memcpy(&blocos[(offset*64) + i * 4], &vals[i], sizeof(int));
+            std::memcpy(&blocos[i * 4], &vals[(offset*64) + i], sizeof(unsigned int));
         }
     }
 
@@ -183,7 +183,18 @@ unsigned int Gera_aleatorio(){
      // Definir a distribuição de números inteiros não assinados
      std::uniform_int_distribution<unsigned int> dis;
      // Gerar e retornar um número aleatório
-     return dis(gen);
+     auto numRet = dis(gen);
+     std::cout << numRet << "\n";
+     return numRet;
+}
+
+
+/*Preenche o vetor (bloco) na (qnt) passada*/
+void Gerar_numeros(unsigned int* bloco, unsigned int qnt){
+    std::memset(bloco, 0, 256*sizeof(unsigned int));
+    for(int i = 0; i < qnt; i++){
+        bloco[i] = Gera_aleatorio();
+    }
 }
 
 //classe principal
@@ -217,8 +228,10 @@ private:
     long int tamanho_livre;
     /*inode disponiveis*/
     int inode_usados;
-
+    
 public:
+    //espaco livre no disco
+    void Print_space();
     //Vetores de posicoes livres
     /*verifica se o inode i está livre, usar o valor desejado -1 -> [1-sizeInodes]*/
     bool Is_inode_free(unsigned int);
@@ -244,7 +257,7 @@ public:
 
     Inode Read_inode(std::string);
 
-    bool File_exists(std::string);
+    //bool File_exists(std::string);
     // le o bloco I e armazena no bloco, usar o valor desejado -1 -> [1-size]
     void Read_block(unsigned int, unsigned int*);
 
@@ -254,7 +267,7 @@ public:
                 return i;
             }
         }
-        return -1;
+        return QNT_BLOCOS+1;
     }
     
     unsigned int Ask_inode(){
@@ -263,7 +276,7 @@ public:
                 return i;
             }
         }
-        return -1;
+        return QNT_INODES+1;
     }
     //FUNCOES CORE
 
@@ -273,24 +286,45 @@ public:
     //tamanho real do arquivo, usar o valor desejado -1 -> [1-size]
     long int Real_Size_Inode(unsigned int);
     long int Real_Size_Inode(std::string);
-    //espaco livre no disco
-    void Print_space();
+    
     //printa o inode i, usar o valor desejado -1 -> [1-size]
     void Printar_Inode(unsigned int);
     //
     void Printar_Bloco(unsigned int);
     void Printar_Bloco(unsigned int, int);
     void Printar_Bloco(unsigned int, int, int);
+    //
+    int Get_inode_index(std::string);
+    //
+    int Get_inode_index(std::string, int);
+    //pega o indice x
+    unsigned int Get_Bloco_Aux(unsigned int, int);
+    //escreve no indice x
+    void Set_Bloco_Aux(unsigned int, int, unsigned int);
+    /*le o byte x do arquivo passado*/
+    unsigned int Read_File_index(std::string, unsigned int);
+
+    /*muda o byte x do arquivo passado*/
+    void Write_File_index(std::string, unsigned int, unsigned int);
+
+    /*adiciona o byte para o arquivo*/
+    void Add_File_index_aux(std::string);
+    void Add_File_index(std::string, unsigned int);
+    //
+    void Change_Block_4byte(unsigned int bloco_num, unsigned int, unsigned int);
+    unsigned int Read_Block_4byte(unsigned int bloco_num, unsigned int);
     /*Funcao para verificar se o arquivo existe e abrir*/
     int Montar();
     /*Funcao para verificar se o arquivo estiver aberto, fecha-lo*/
     int Desmontar();
 
+    //arquivos
+
     void Listar_Arquivos();
 
     void Cria_Arquivo(std::string , unsigned int);
 
-    void Cria_Escrever_inode(std::string , unsigned int, unsigned int, unsigned int*, unsigned int, unsigned int);
+    void Cria_Escrever_inode(unsigned int, std::string , unsigned int, unsigned int, unsigned int*, unsigned int, unsigned int);
 
     bool Apaga_Arquivo(std::string);
 
@@ -410,6 +444,178 @@ bool Disco::Release_inode(unsigned int i){
     return sucesso;
 }
 
+//escreve o inode para o arquivo, garanta que i está livre para escrever
+bool Disco::Write_Inode(unsigned int i, Inode node){
+    //vai ate a posicao I onde o inode sera escrito
+    this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
+    this->arquivo->write(reinterpret_cast<char*>(&node), sizeof(Inode));
+    return true;
+}
+
+void Disco::Change_Block_4byte(unsigned int bloco_num, unsigned int indice, unsigned int valor){
+    this->arquivo->seekg(this->start_blocos + (streampos)(QNT_BLOCOS*bloco_num) + (indice*4));
+    this->arquivo->write(reinterpret_cast<char*>(&valor), sizeof(unsigned int));
+}
+
+unsigned int Disco::Read_Block_4byte(unsigned int bloco_num, unsigned int indice){
+    this->arquivo->seekg(this->start_blocos + (streampos)(QNT_BLOCOS*bloco_num) + (indice*4));
+    unsigned int valor;
+    this->arquivo->read(reinterpret_cast<char*>(&valor), sizeof(unsigned int));
+    return valor;
+}
+
+//le os inodes do arquivo
+Inode Disco::Read_inode(unsigned int inode_num){
+    //vai ate a posicao I onde o inode sera escrito
+    this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*inode_num));
+    //lê o inode
+    Inode node;
+    this->arquivo->read(reinterpret_cast<char*>(&node), sizeof(Inode));
+    return node;
+}
+
+//le os inodes do arquivo
+Inode Disco::Read_inode(std::string nomeArquivo){
+    std::string nomeString(Monta_nome(nomeArquivo), 8);
+    for (int i = 0; i < QNT_INODES; i++)
+    {
+        this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
+        Inode node;
+        this->arquivo->read(reinterpret_cast<char*>(&node), sizeof(Inode));
+        std::string name(node.nome, 8);
+        if(Compara_nomes(name, nomeString)){return node;}
+    }
+    
+    return Inode(true);
+}
+
+//le os inodes do arquivo
+int Disco::Get_inode_index(std::string nomeArquivo){
+    std::string nomeString(Monta_nome(nomeArquivo), 8);
+    for (int i = 0; i < QNT_INODES; i++)
+    {
+        this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
+        Inode node;
+        this->arquivo->read(reinterpret_cast<char*>(&node), sizeof(Inode));
+        std::string name(node.nome, 8);
+        if(Compara_nomes(name, nomeString)){return i;}
+    }
+    return QNT_INODES;
+}
+
+long int Disco::Size_Inode(unsigned int inode_num){
+    Inode inode_atual = this->Read_inode(inode_num);
+    int size = 0;
+    for(int i = 0; i < 64; i++){
+        unsigned int valor = *(reinterpret_cast<unsigned int*>(inode_atual.blocos + (i*4)));
+        if(valor >= QNT_BLOCOS){
+            break;
+        }else{
+            size+=1024;
+        }
+    }
+    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
+    if(proximo < QNT_INODES){
+        return size + Size_Inode(proximo);
+    }else{
+        return size;
+    }
+    return size;
+}
+
+long int Disco::Size_Inode(std::string nome){
+    Inode inode_atual = this->Read_inode(nome);
+    int size = 0;
+    for(int i = 0; i < 64; i++){
+        unsigned int valor = *(reinterpret_cast<unsigned int*>(inode_atual.blocos + (i*4)));
+        if(valor >= QNT_BLOCOS){
+            break;
+        }else{
+            size+=1024;
+        }
+    }
+    int proximo = *(reinterpret_cast<unsigned int*>(inode_atual.next));
+    if(proximo < QNT_INODES){
+        return size + Size_Inode(proximo);
+    }else{
+        return size;
+    }
+    return size;
+}
+
+long int Disco::Real_Size_Inode(unsigned int inode_num){
+    Inode inode_atual = this->Read_inode(inode_num);
+    long int size = 0;
+    int usado = *(reinterpret_cast<int*>(inode_atual.size));
+    size += usado * 4;
+    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
+    if(proximo < QNT_INODES){
+        return size + Real_Size_Inode(proximo);
+    }else{
+        return size;
+    }
+    return size;
+}
+
+long int Disco::Real_Size_Inode(std::string nome){
+    Inode inode_atual = this->Read_inode(nome);
+    long int size = 0;
+    int usado = *(reinterpret_cast<int*>(inode_atual.size));
+    size += usado * 4;
+    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
+    if(proximo < QNT_INODES){
+        return size + Real_Size_Inode(proximo);
+    }else{
+        return size;
+    }
+    return size;
+}
+
+void Disco::Printar_Inode(unsigned int i){
+    Inode inod = Read_inode(i);
+    if(!Nome_vazio(inod.nome)){
+        long int diskSize = Size_Inode(i);
+        long int realSize = Real_Size_Inode(i);
+        std::cout << "Nome: " <<  std::string(inod.nome) << " { " <<  " tamanho em disco(em bytes): " << diskSize << " | " << "tamanho real(em bytes): " << realSize << " }\n";
+    }
+}
+
+bool Disco::Delete_Inode(unsigned int i){
+    //libera o inode
+    Release_inode(i);
+    //pega o inode
+    Inode Rnode = Read_inode(i);
+    //apaga o inode
+    Inode node = Read_inode(i);
+    std::memset(&node, 0, sizeof(Inode));
+    //vai ate a posicao I onde o inode sera escrito
+    this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
+    //escreve o inode
+    this->arquivo->write(reinterpret_cast<char*>(&node), sizeof(Inode));
+    int next = *reinterpret_cast<int*>(Rnode.next);
+    //libera os blocos
+    for(int i = 0; i < 64; i++){
+        int valor = *(reinterpret_cast<int*>(Rnode.blocos + (i*4)));
+        if(valor < QNT_BLOCOS+1){
+            this->Release_bloco(valor);
+        }else{
+            break;
+        }
+    }
+    if(next < QNT_INODES){return Delete_Inode(next);}
+    return true;
+}
+
+void Disco::Cria_Escrever_inode(unsigned int indice, std::string nome, unsigned int tamanho, unsigned int proximo, unsigned int* vetor_blocos, unsigned int qnt_blocos, unsigned int offset){
+    Inode node(true);
+    node.set_Nome(nome.c_str(), nome.size());
+    node.set_Size(tamanho);
+    node.set_next(proximo);
+    node.set_blocos(vetor_blocos, qnt_blocos, offset);
+    this->Write_Inode(indice, node);
+    return;
+}
+
 //BLOCOS
 
 bool Disco::Is_bloco_free(unsigned int i){
@@ -508,123 +714,12 @@ void Disco::Read_block(unsigned int block_num, unsigned int* blocosLidos){
     this->arquivo->read(reinterpret_cast<char*>(blocosLidos), 256*sizeof(unsigned int));
 }
 
-//escreve o inode para o arquivo, garanta que i está livre para escrever
-bool Disco::Write_Inode(unsigned int i, Inode node){
-    //vai ate a posicao I onde o inode sera escrito
-    this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
-    this->arquivo->write(reinterpret_cast<char*>(&node), sizeof(Inode));
-    return true;
-}
-
-//le os inodes do arquivo
-Inode Disco::Read_inode(unsigned int inode_num){
-    //vai ate a posicao I onde o inode sera escrito
-    this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*inode_num));
-    //lê o inode
-    Inode node;
-    this->arquivo->read(reinterpret_cast<char*>(&node), sizeof(Inode));
-    return node;
-}
-
-//le os inodes do arquivo
-Inode Disco::Read_inode(std::string nomeArquivo){
-    std::string nomeString(Monta_nome(nomeArquivo), 8);
-    for (int i = 0; i < QNT_INODES; i++)
-    {
-        this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
-        Inode node;
-        this->arquivo->read(reinterpret_cast<char*>(&node), sizeof(Inode));
-        std::string name(node.nome, 8);
-        if(Compara_nomes(name, nomeString)){return node;}
-    }
-    
-    return Inode(true);
-}
-
-long int Disco::Size_Inode(unsigned int inode_num){
-    Inode inode_atual = this->Read_inode(inode_num);
-    long int size = 0;
-    for(int i = 0; i < 64; i++){
-        int valor = *(reinterpret_cast<int*>(inode_atual.blocos + (i*4)));
-        if(valor >= QNT_BLOCOS){
-            break;
-        }else{
-            size += 1024;
-        }
-    }
-    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
-    if(proximo < QNT_INODES){
-        return size + Size_Inode(proximo);
-    }else{
-        return size;
-    }
-    return size;
-}
-
-long int Disco::Size_Inode(std::string nome){
-    Inode inode_atual = this->Read_inode(nome);
-    long int size = 0;
-    for(int i = 0; i < 64; i++){
-        int valor = *(reinterpret_cast<int*>(inode_atual.blocos + (i*4)));
-        if(valor >= QNT_BLOCOS){
-            break;
-        }else{
-            size += 1024;
-        }
-    }
-    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
-    if(proximo < QNT_INODES){
-        return size + Size_Inode(proximo);
-    }else{
-        return size;
-    }
-    return size;
-}
-
-
-long int Disco::Real_Size_Inode(unsigned int inode_num){
-    Inode inode_atual = this->Read_inode(inode_num);
-    long int size = 0;
-    int usado = *(reinterpret_cast<int*>(inode_atual.size));
-    size += usado * 4;
-    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
-    if(proximo < QNT_INODES){
-        return size + Real_Size_Inode(proximo);
-    }else{
-        return size;
-    }
-    return size;
-}
-
-long int Disco::Real_Size_Inode(std::string nome){
-    Inode inode_atual = this->Read_inode(nome);
-    long int size = 0;
-    int usado = *(reinterpret_cast<int*>(inode_atual.size));
-    size += usado * 4;
-    int proximo = *(reinterpret_cast<int*>(inode_atual.next));
-    if(proximo < QNT_INODES){
-        return size + Real_Size_Inode(proximo);
-    }else{
-        return size;
-    }
-    return size;
-}
-
-void Disco::Printar_Inode(unsigned int i){
-    Inode inod = Read_inode(i);
-    if(!Nome_vazio(inod.nome)){
-        long int diskSize = Size_Inode(i);
-        long int realSize = Real_Size_Inode(i);
-        std::cout << "Nome: " << std::string(inod.nome)  << " { " <<  "tamanho em disco(em bytes): " << diskSize << " | " << "tamanho real(em bytes): " << realSize << " }\n";
-    }
-}
-
 void Disco::Printar_Bloco(unsigned int bloco_num){
     if(bloco_num > QNT_BLOCOS){return;}
     unsigned int* block_read = new(std::nothrow)unsigned int[256];
     this->Read_block(bloco_num, block_read);
     std::cout << "bloco: " << bloco_num;
-    for(int j; j < 256; j++){
+    for(int j = 0; j < 256; j++){
         if(j%16 == 0){std::cout << "\n";}
         std::cout << block_read[j] << " ";
     }
@@ -639,6 +734,23 @@ void Disco::Printar_Bloco(unsigned int bloco_num, int indice){
     delete[] block_read;
 }
 
+unsigned int Disco::Get_Bloco_Aux(unsigned int bloco_num, int indice){
+    unsigned int* block_read = new(std::nothrow)unsigned int[256];
+    this->Read_block(bloco_num, block_read);
+    unsigned int retorno = block_read[indice];
+    delete[] block_read;
+    return retorno;
+}
+
+void Disco::Set_Bloco_Aux(unsigned int bloco_num, int indice, unsigned int val){
+    unsigned int* block_read = new(std::nothrow)unsigned int[256];
+    this->Read_block(bloco_num, block_read);
+    block_read[indice] = val;
+    this->Write_Block(bloco_num, block_read, 256);
+    delete[] block_read;
+    return;
+}
+
 void Disco::Printar_Bloco(unsigned int bloco_num, int start, int end){
     if(bloco_num > QNT_BLOCOS){return;}
     unsigned int* block_read = new(std::nothrow)unsigned int[256];
@@ -650,56 +762,181 @@ void Disco::Printar_Bloco(unsigned int bloco_num, int start, int end){
     }
     delete[] block_read;
 }
-/*
-escreve o inode para o arquivo, garanta que i está livre para escrever
-garanta que o inode existe
-*/
-bool Disco::Delete_Inode(unsigned int i){
-    //libera o inode
-    Release_inode(i);
-    //pega o inode
-    Inode Rnode = Read_inode(i);
-    //apaga o inode
-    Inode node = Read_inode(i);
-    std::memset(&node, 0, sizeof(Inode));
-    //vai ate a posicao I onde o inode sera escrito
-    this->arquivo->seekg(this->start_inodes + (streampos)(sizeof(Inode)*i));
-    //escreve o inode
-    this->arquivo->write(reinterpret_cast<char*>(&node), sizeof(Inode));
-    int next = *reinterpret_cast<int*>(Rnode.next);
-    //libera os blocos
+
+//arquivos
+/*le o byte x do arquivo passado*/
+unsigned int Disco::Read_File_index(std::string nome, unsigned int indice){
+    //define as variaveis
+    Inode node = this->Read_inode(nome);
+    long int tamanho = this->Real_Size_Inode(nome);
+    long int qntBlocos = this->Size_Inode(nome);
+    //contem o indice
+    if(indice >= tamanho){indice = tamanho-1;}
+    else if(indice < 0){indice = 0;}
+    //descobre os indices dos blocos
+    int blocoIndex = floor((float)indice/256.0); //16.384
+    int blocoIndexBackup = blocoIndex;
+    //qual inode tem o indice
+    int inodeIndex = floor((float)blocoIndex/64.0);
+    //vai para o inode inode index
+    for (int i = 0; i < inodeIndex; i++)
+    {
+        int next = *reinterpret_cast<int*>(node.next);
+        node = this->Read_inode(next);
+        blocoIndexBackup -= 64;
+    }
+    //le o bloco blocoIndex
+    //pega o bloco
+    vector<int> blocos;
     for(int i = 0; i < 64; i++){
-        int valor = *(reinterpret_cast<int*>(Rnode.blocos + (i*4)));
-        if(valor < QNT_BLOCOS+1){
-            this->Release_bloco(valor);
-        }else{
+        int valor = *(reinterpret_cast<int*>(node.blocos + (i*4)));
+        if(valor >= QNT_BLOCOS){
             break;
+        }else{
+            blocos.push_back(valor);
         }
     }
-    if(next < QNT_INODES){return Delete_Inode(next);}
-    return true;
+    unsigned int valor = this->Get_Bloco_Aux(blocos[blocoIndexBackup], indice-(256*blocoIndex));
+    return valor;
 }
 
+/*muda o byte x do arquivo passado*/
+void Disco::Write_File_index(std::string nome, unsigned int indice, unsigned int valor){
+    //define as variaveis
+    Inode node = this->Read_inode(nome);
+    long int tamanho = this->Real_Size_Inode(nome);
+    long int qntBlocos = this->Size_Inode(nome);
+    //contem o indice
+    if(indice >= tamanho || indice < 0){return;}
+    //descobre os indices dos blocos
+    int blocoIndex = floor((float)indice/256.0); //16.384
+    int blocoIndexBackup = blocoIndex;
+    //qual inode tem o indice
+    int inodeIndex = floor((float)blocoIndex/64.0);
+    //vai para o inode inode index
+    for (int i = 0; i < inodeIndex; i++)
+    {
+        int next = *reinterpret_cast<int*>(node.next);
+        node = this->Read_inode(next);
+        blocoIndexBackup -= 64;
+    }
+    //le o bloco blocoIndex
+    //pega o bloco
+    vector<int> blocos;
+    for(int i = 0; i < 64; i++){
+        int valor = *(reinterpret_cast<int*>(node.blocos + (i*4)));
+        if(valor >= QNT_BLOCOS){
+            break;
+        }else{
+            blocos.push_back(valor);
+        }
+    }
+    this->Set_Bloco_Aux(blocos[blocoIndexBackup], indice-(256*blocoIndex), valor);
+}
 
-//768 - 
+/*aumenta o tamanho do inode*/
+void Disco::Add_File_index_aux(std::string nome){
+    //define as variaveis
+    Inode node = this->Read_inode(nome);
+    long int tamanho = this->Real_Size_Inode(nome);
+    long int qntBlocos = this->Size_Inode(nome);
+    int last_pos = tamanho-1;
+    //vou para o inode da ultima posicao
+    int blocoIndex = floor((float)last_pos/256.0); //16.384
+    int blocoIndexBackup = blocoIndex;
+    //qual inode tem o indice
+    int inodeIndex = floor((float)blocoIndex/64.0);
+    int next = QNT_INODES;
+    //vou para o ultimo inode
+    for (int i = 0; i < inodeIndex; i++)
+    {
+        next = *reinterpret_cast<int*>(node.next);
+        node = this->Read_inode(next);
+        blocoIndexBackup -= 64;
+    }
+    //chego no ultimo inode
+    //tamanho do ultimo inode
+    unsigned int size_inode = *(reinterpret_cast<unsigned int*>(node.size));
+    if(size_inode == (unsigned int)16384){
+        //se ele for = (unsigned int)16384 esta cheio
+    }else{
+        //se nao
+        //ele tem bloco livre?
+        int livre = qntBlocos - tamanho;
+        if(livre > 0){
+            //tem bloco livre 
+            //-> adiciona ao final do bloco
+            //pega o bloco
+            vector<int> blocos;
+            for(int i = 0; i < 64; i++){
+                unsigned int valor = *(reinterpret_cast<unsigned int*>(node.blocos + (i*4)));
+                if(valor >= QNT_BLOCOS){
+                    break;
+                }else{
+                    blocos.push_back(valor);
+                }
+            }
+            //-> aumenta o tamanho em 1
+            node.set_Size(size_inode+1);
+            //-> diminui o espaco livre em 4
+            this->tamanho_livre -=4;
+            if(next < QNT_INODES){
+                this->Write_Inode(next, node);
+                std::cout << "escrito em:" << next << "\n";
+            }else{
+                int indice = this->Get_inode_index(nome);
+                this->Write_Inode(indice, node);
+                std::cout << "escrito em:" << indice << "\n";
+            }
+            return; //-> retorna
+            
+        }else{
+            //nao tem bloco livre
+        }
+    }
+    
+    
+   
+        
+        
+        
+        
+        
+    
+    //-> acha o indice i no inode do primeiro bloco livre
+    //-> peco um bloco
+    //-> adiciono o indice desse bloco na posicao i
+    //->escrevo o valor no bloco
+    //->escrevo o bloco no arquivo
+    //retorna
+}
+
+void Disco::Add_File_index(std::string nome, unsigned int valor){
+    this->Add_File_index_aux(nome);
+    int indice = this->Real_Size_Inode(nome);
+    this->Write_File_index(nome, (indice/4)-1, valor);
+}
+
 //FUNCOES REQUERIDAS
 
 /*passar o nome do arquivo e o tamanho -> quantos numeros escrever*/
 void Disco::Cria_Arquivo(std::string nome, unsigned int size){
+    if(size == 0){return;}
     int size_backup = size;
     //quantos blocos são necessarios para escrever o arquivo
-    int qntBlocos = ceil(size/256.0);
+    unsigned int qntBlocos = ceil(size/256.0);
+    unsigned int qntBlocos_backup = qntBlocos;
     if(qntBlocos*1024 > tamanho_livre){
         std::cout << "sem espaco suficiente\n";
         return;
     }
     //pega os blocos que seram usados 
-    vector<int> blocos;
-    for (int i = 0; i < qntBlocos; i++)
+    //vector<unsigned int> blocos;
+    unsigned int* blocos = new(std::nothrow)unsigned int[qntBlocos];
+    for (unsigned int i = 0; i < qntBlocos; i++)
     {
-        int bloco = this->Ask_bloco();if(bloco == -1){return;}
-        this->Book_bloco(bloco);
-        blocos.push_back(bloco);
+        blocos[i] = this->Ask_bloco();if(blocos[i] >= QNT_BLOCOS){ delete[] blocos; return;}
+        this->Book_bloco(blocos[i]);
     }
     std::cout << "qnt blocos: " << qntBlocos << "\n";
 
@@ -711,76 +948,68 @@ void Disco::Cria_Arquivo(std::string nome, unsigned int size){
     }
     std::cout << "qnt inodes: " << qntInodes << "\n";
     //endereco dos inodes
-    vector<int> endrInodes;
+    //vector<unsigned int> endrInodes;
+    unsigned int* endrInodes = new(std::nothrow)unsigned int[qntInodes];
     for (int i = 0; i < qntInodes; i++)
     {
-        int inodeA = this->Ask_inode();if(inodeA == -1){return;}
-        this->Book_inode(inodeA);
-        endrInodes.push_back(inodeA);
+        endrInodes[i] = this->Ask_inode();if(endrInodes[i] >= QNT_INODES){delete[] blocos; delete[] endrInodes; return;}
+        this->Book_inode(endrInodes[i]);
+        //endrInodes.push_back(inodeA);
     }
 
     //monta o inode raiz //////////////////////////////////////////////////////////////
     int offset_blocos_data = 0;
-    Inode raiz(true);
-    //seta o nome e extensao
-    raiz.set_Nome(nome.c_str(), nome.size());
-    if(qntInodes > 1){raiz.set_next(endrInodes[1]);}
-    if(qntBlocos <= 64){raiz.set_Size(size); raiz.set_blocos(blocos.data(), qntBlocos, offset_blocos_data);}
-    else{
-        raiz.set_Size(16384); raiz.set_blocos(blocos.data(), 64, offset_blocos_data);
+    unsigned int nxt = QNT_INODES;
+    if(qntInodes > 1){nxt = endrInodes[1];}
+    if(qntBlocos <= 64){
+        this->Cria_Escrever_inode(endrInodes[0], nome, size, nxt, blocos, qntBlocos, offset_blocos_data);
+    }else{
+        this->Cria_Escrever_inode(endrInodes[0], nome, (unsigned int)16384, nxt, blocos, (unsigned int)64, offset_blocos_data);
         offset_blocos_data++;
         size -= 16384;
         qntBlocos -= 64;
     }
-    //escreve inode
-    this->Write_Inode(endrInodes[0], raiz);
     ///Monta inodes folhas ////////////////////////////////////////////////////////////
     for (int i = 1; i < qntInodes; i++){
-        //reserva o endrInodes[i]
-        //Inode* folha = new Inode(true);
-        raiz.set_Nome("", 0);
-        if(i+1 < qntInodes){raiz.set_next(endrInodes[i+1]);}else{raiz.set_next(QNT_INODES);}
-        if(qntBlocos <= 64){raiz.set_Size(size); raiz.set_blocos(blocos.data(), qntBlocos, offset_blocos_data);}
-        else{
-            raiz.set_Size(16384); raiz.set_blocos(blocos.data(), 64, offset_blocos_data);
+        std::string folhaNome = "";
+        if(i+1 < qntInodes){
+            nxt = endrInodes[i+1];
+        }else{
+            nxt = QNT_INODES;
+        }
+
+        if(qntBlocos <= 64){ 
+            this->Cria_Escrever_inode(endrInodes[i], folhaNome, size, nxt, blocos, qntBlocos, offset_blocos_data);
+        }else{
+            //raiz.set_Size(16384); raiz.set_blocos(blocos.data(), 64, offset_blocos_data);
+            this->Cria_Escrever_inode(endrInodes[i], folhaNome, (unsigned int)16384, nxt, blocos, (unsigned int)64, offset_blocos_data);
             offset_blocos_data++;
             size -= 16384;
             qntBlocos -= 64;
         }
         //escreve inode
-        this->Write_Inode(endrInodes[i], raiz);
     }
     ///////////////////////////////////////////////////////////////////////////////////
     ///// PREENCHE OS BLOCOS COM NUMEROS INTEIROS ALEATORIOS
-    vector<unsigned int> bloco_u;
-    bool discarregado = false;
     int indice_bloco = 0;
     int qnt_escritos = 0;
-    for(int i = 0; i < size_backup; i++){
-        discarregado = false;
-        //gera um numero aleatorio e insere em bloco_u
-        unsigned int num = Gera_aleatorio();
-        bloco_u.push_back(num);
-        qnt_escritos++;
-        if(qnt_escritos >= 256){
-            std::cout << "valor-blocos[indice_bloco]: " << blocos[indice_bloco] << "\n";
-            discarregado = true;
-            this->Write_Block(blocos[indice_bloco], bloco_u.data(), qnt_escritos);
-            indice_bloco++;
-            qnt_escritos = 0;
-            bloco_u.clear();
-        }
+    unsigned int* bloco_u = new(std::nothrow)unsigned int[256];
+    while(size_backup > 0){
+        std::cout << "numeros gerados\n";
+        Gerar_numeros(bloco_u, size_backup);
+        this->Write_Block(blocos[indice_bloco], bloco_u, 256);
+        indice_bloco++;
+        size_backup -= 256;
     }
-    if(discarregado == false){
-        this->Write_Block(blocos[indice_bloco], bloco_u.data(), qnt_escritos);
-    }
+    
+    delete[] bloco_u;
+    delete[] blocos;
+    delete[] endrInodes;
     //////////////////////////////////////////////////////////////////////////////////
-    tamanho_livre -= (blocos.size()*1024);
+    tamanho_livre -= (qntBlocos_backup*1024);
     std::cout << "arquivo escrito\n";
     return;
 }
-
-void Cria_Escrever_inode(std::string , unsigned int, unsigned int, unsigned int*, unsigned int, unsigned int);
 
 bool Disco::Apaga_Arquivo(std::string nomeArquivo){
     std::string nomeString(Monta_nome(nomeArquivo), 8);
@@ -794,7 +1023,7 @@ bool Disco::Apaga_Arquivo(std::string nomeArquivo){
             int tamanho = this->Size_Inode(i);
             this->tamanho_livre += tamanho;
             this->Delete_Inode(i);
-            std::cout << name << " apagado " << tamanho << "kb livres\n";
+            std::cout << name << " apagado " << tamanho << "Bytes livres\n";
             return true;
         }
     }
@@ -817,8 +1046,8 @@ void Disco::Ler_Arquivo(std::string nomeArquivo, unsigned int inicio, unsigned i
     Inode node = this->Read_inode(nomeArquivo);
     long int tamanho = this->Real_Size_Inode(nomeArquivo);
     long int qntBlocos = this->Size_Inode(nomeArquivo);
-    if(fim >= tamanho || fim < 0){return;}
-    if(inicio >= tamanho || inicio < 0){return;}
+    if(fim > tamanho || fim < 0){return;}
+    if(inicio > tamanho || inicio < 0){return;}
     if(inicio == fim){
         int blocoIndex = floor((float)inicio/256.0); //16.384
         int blocoIndexBackup = blocoIndex;
@@ -883,7 +1112,7 @@ void Disco::Ler_Arquivo(std::string nomeArquivo, unsigned int inicio, unsigned i
     //ambos os valores estao no mesmo inode
     if(inodeIndex_start == inodeIndex_end){
         //estao no mesmo bloco
-        if(blocoIndex_start == blocoIndex_end){ this->Printar_Bloco(blocos[blocoIndex_startBackup], start-(256*blocoIndex_start), end-(256*blocoIndex_start)); return;}
+        if(blocoIndex_start == blocoIndex_end){ this->Printar_Bloco(blocos[blocoIndex_startBackup], start-(256*blocoIndex_start), end-(256*blocoIndex_start)); std::cout << "\n"; return;}
         //nao estao no mesmo bloco
         else{
             //printa no blocos[blocoIndex_start] do indiceS até o ultimo
@@ -895,6 +1124,7 @@ void Disco::Ler_Arquivo(std::string nomeArquivo, unsigned int inicio, unsigned i
             }
             //printa no blocos[blocoIndex_end] do 0 até o indiceE
             this->Printar_Bloco(blocos[blocoIndex_endBackup], 0, end-(256*blocoIndex_end));
+            std::cout << "\n";
             return;
         }
     //nao estao no mesmo inode
@@ -938,6 +1168,7 @@ void Disco::Ler_Arquivo(std::string nomeArquivo, unsigned int inicio, unsigned i
 
         //printa o bloco blocoIndex_end
         this->Printar_Bloco(blocos_end[blocoIndex_endBackup],0, end-(256*blocoIndex_end));
+        std::cout << "\n";
         return;
     }
 }
