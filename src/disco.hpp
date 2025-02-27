@@ -38,9 +38,13 @@ bloco: 1024
 
 // PAGINACAO - 26 bytes // size: 141.722.624 bytes
 -paginacao > 2.097.152 paginas de 68 bytes > 144.703.488 > sobram 729.088 bytes
---28 bytes
----4 bytes -> quantidade de divisoes - no maximo 6
---24 bytes -> vetor de tamanho 6 com 4 bytes cada,
+
+paginacao: 141.722.624
+qnt de paginas usadas 4-> bytes
+Paginas:total 141.722.620
+usado: 141.722.136
+pagina: 4 bytes, quantas posicoes estao sendo usadas, maximo e 141.722.620
+
 memoria principal
 -524.288 > posicoes de 4 bytes disponiveis > divide BLOCOS em 6, no maximo, para cada posicao ter 1 numero de um bloco
 
@@ -55,7 +59,6 @@ total > 1.073.741.824 bytes > 1GB
 #define QNT_INODES (716800)
 #define QNT_BLOCOS (716800)
 
-//Estruturas
 
 struct Inode{
     /*nome do inode*/
@@ -108,6 +111,10 @@ struct Inode{
         for(int i = 0; i < qnt; i++){
             std::memcpy(&blocos[i * 4], &vals[(offset*64) + i], sizeof(unsigned int));
         }
+    }
+
+    void set_bloco(unsigned int val, unsigned int pos){
+        std::memcpy(&blocos[pos * 4], &val, sizeof(unsigned int));
     }
 
     Inode(){}
@@ -184,7 +191,7 @@ unsigned int Gera_aleatorio(){
      std::uniform_int_distribution<unsigned int> dis;
      // Gerar e retornar um número aleatório
      auto numRet = dis(gen);
-     std::cout << numRet << "\n";
+     //std::cout << numRet << "\n";
      return numRet;
 }
 
@@ -194,6 +201,67 @@ void Gerar_numeros(unsigned int* bloco, unsigned int qnt){
     std::memset(bloco, 0, 256*sizeof(unsigned int));
     for(int i = 0; i < qnt; i++){
         bloco[i] = Gera_aleatorio();
+    }
+}
+
+
+void fill_memory(void *ptr, size_t size) {
+    // Preencher a memÃ³ria alocada para garantir que seja realmente alocada
+    memset(ptr, 0, size);
+}
+
+//passar o ponteiro já na posicao certa
+void change_memory_index(unsigned int *ptr, unsigned int val){
+    memset(ptr, val, sizeof(unsigned int));
+}
+
+//ordenacao
+// Função auxiliar para trocar dois elementos
+void swap(unsigned int& a, unsigned int& b) {
+    unsigned int temp = a;
+    a = b;
+    b = temp;
+}
+
+// Função para ajustar o heap
+void heapify(unsigned int* arr, int n, int i) {
+    int largest = i; // Inicializa o maior como raiz
+    int left = 2 * i + 1; // Filho esquerdo
+    int right = 2 * i + 2; // Filho direito
+
+    // Se o filho esquerdo é maior que a raiz
+    if (left < n && arr[left] > arr[largest]) {
+        largest = left;
+    }
+
+    // Se o filho direito é maior que o maior até agora
+    if (right < n && arr[right] > arr[largest]) {
+        largest = right;
+    }
+
+    // Se o maior não é a raiz
+    if (largest != i) {
+        swap(arr[i], arr[largest]);
+
+        // Recursivamente ajusta o sub-heap afetado
+        heapify(arr, n, largest);
+    }
+}
+
+// Função Heap Sort
+void heapSort(unsigned int* arr, int n) {
+    // Constrói o heap (reorganiza o vetor)
+    for (int i = n / 2 - 1; i >= 0; i--) {
+        heapify(arr, n, i);
+    }
+
+    // Um por um, extrai um elemento do heap
+    for (int i = n - 1; i >= 0; i--) {
+        // Move a raiz atual para o fim
+        swap(arr[0], arr[i]);
+
+        // Chama heapify no heap reduzido
+        heapify(arr, i, 0);
     }
 }
 
@@ -228,8 +296,10 @@ private:
     long int tamanho_livre;
     /*inode disponiveis*/
     int inode_usados;
-    
 public:
+    /*endereco hugepages*/
+    void* memory_addr;
+    bool iniciado_com_sucesso = false;
     //espaco livre no disco
     void Print_space();
     //Vetores de posicoes livres
@@ -247,7 +317,7 @@ public:
     bool Release_bloco(unsigned int);
     //alocacao de inode e blocos
     //escreve o inode para o arquivo, usar o valor desejado -1 -> [1-size]
-    bool Write_Block(unsigned int, unsigned int*, unsigned int size);
+    bool Write_Block(unsigned int, unsigned int*, unsigned int);
     //escreve o inode para o arquivo, usar o valor desejado -1 -> [1-size]
     bool Write_Inode(unsigned int, Inode);
     //deleta o inode i, usar o valor desejado -1 -> [1-sizeblocos]
@@ -260,6 +330,18 @@ public:
     //bool File_exists(std::string);
     // le o bloco I e armazena no bloco, usar o valor desejado -1 -> [1-size]
     void Read_block(unsigned int, unsigned int*);
+
+    void Read_block(unsigned int, unsigned int*, unsigned int);
+
+    //paginacao
+    unsigned int Read_page_qnt();
+
+    void Read_page(unsigned int, unsigned int*);
+    void Read_page(unsigned int, unsigned int*, unsigned int);
+
+    void Set_page_qnt(unsigned int);
+    void Set_page(unsigned int, unsigned int*);
+    void Set_page(unsigned int, unsigned int*, unsigned int);
 
     unsigned int Ask_bloco(){
         for(unsigned int i = 0; i < QNT_BLOCOS; i++){
@@ -318,6 +400,28 @@ public:
     /*Funcao para verificar se o arquivo estiver aberto, fecha-lo*/
     int Desmontar();
 
+    //manipulacao hugepages
+    void unload_mem(std::string);
+
+    void unload_mem(unsigned int bloco, unsigned int offset, unsigned int size);
+
+    void unload_mem_page(unsigned int page, unsigned int offset, unsigned int size);
+
+    //carrega um bloco para a memoria
+    void Load_to_Mem(unsigned int, unsigned int);
+
+    //carrega os k numeros da bloco para a memoria
+    void Load_to_Mem(unsigned int, unsigned int, unsigned int);
+
+    //carrega os blocos para a memoria
+    void Load_to_Mem(unsigned int*, unsigned int, unsigned int);
+
+    //carrega uma pagina para a memoria
+    void Load_Page_to_Mem(unsigned int, unsigned int);
+
+    //carrega os k numeros da pagina para a memoria
+    void Load_Page_to_Mem(unsigned int, unsigned int, unsigned int);
+
     //arquivos
 
     void Listar_Arquivos();
@@ -330,14 +434,28 @@ public:
 
     void Ler_Arquivo(std::string, unsigned int, unsigned int);
 
+    //(nome, blocos, qnt_blocos, tamanho_arquivo)
+    void Merge_sort_externo(std::string, unsigned int*, unsigned int, unsigned int);
+
+    void Ordenar_Arquivo(std::string);
+
     //Inode ler_inode(int);
     void Printar_path(){
         printf("local do arquivo disco: %s\n", this->path);
     }
 
     Disco(){
-        Montar();
+        this->Montar();
         std::cout << "carregando sistema...\n";
+
+        // Alocar memória com mmap
+        this->memory_addr = mmap(nullptr, HUGEPAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS| MAP_HUGETLB, -1, 0);
+        if (this->memory_addr == MAP_FAILED) {
+            perror("mmap");
+            return;
+        }
+        fill_memory(this->memory_addr, HUGEPAGE_SIZE);
+        std::cout << "Hugepage allocated at: " << this->memory_addr << std::endl;
         tamanho_disco = 734003200;
         tamanho_livre = 734003200;
         inode_usados  = 0;
@@ -355,6 +473,7 @@ public:
             inode_usados += contarBitsSetados(byte_inode_lido);
         }
         std::cout << "\nsistema carregado\n";
+        iniciado_com_sucesso = true;
     }
     ~Disco();
 };
@@ -452,13 +571,15 @@ bool Disco::Write_Inode(unsigned int i, Inode node){
     return true;
 }
 
+//muda os bytes especificos do bloco passado
 void Disco::Change_Block_4byte(unsigned int bloco_num, unsigned int indice, unsigned int valor){
-    this->arquivo->seekg(this->start_blocos + (streampos)(QNT_BLOCOS*bloco_num) + (indice*4));
+    this->arquivo->seekg(this->start_blocos + (streampos)(QNT_BLOCOS*bloco_num) + (streampos)(indice*4));
     this->arquivo->write(reinterpret_cast<char*>(&valor), sizeof(unsigned int));
 }
 
+//le os bytes especificos do bloco passado
 unsigned int Disco::Read_Block_4byte(unsigned int bloco_num, unsigned int indice){
-    this->arquivo->seekg(this->start_blocos + (streampos)(QNT_BLOCOS*bloco_num) + (indice*4));
+    this->arquivo->seekg(this->start_blocos + (streampos)(QNT_BLOCOS*bloco_num) + (streampos)(indice*4));
     unsigned int valor;
     this->arquivo->read(reinterpret_cast<char*>(&valor), sizeof(unsigned int));
     return valor;
@@ -503,6 +624,7 @@ int Disco::Get_inode_index(std::string nomeArquivo){
     return QNT_INODES;
 }
 
+/*retorna o numero de bytes no arquivo*/
 long int Disco::Size_Inode(unsigned int inode_num){
     Inode inode_atual = this->Read_inode(inode_num);
     int size = 0;
@@ -522,7 +644,7 @@ long int Disco::Size_Inode(unsigned int inode_num){
     }
     return size;
 }
-
+/*retorna o numero de bytes no arquivo*/
 long int Disco::Size_Inode(std::string nome){
     Inode inode_atual = this->Read_inode(nome);
     int size = 0;
@@ -542,7 +664,7 @@ long int Disco::Size_Inode(std::string nome){
     }
     return size;
 }
-
+/*retorna o numero real de bytes no arquivo*/
 long int Disco::Real_Size_Inode(unsigned int inode_num){
     Inode inode_atual = this->Read_inode(inode_num);
     long int size = 0;
@@ -556,7 +678,7 @@ long int Disco::Real_Size_Inode(unsigned int inode_num){
     }
     return size;
 }
-
+/*retorna o numero real de bytes no arquivo*/
 long int Disco::Real_Size_Inode(std::string nome){
     Inode inode_atual = this->Read_inode(nome);
     long int size = 0;
@@ -707,12 +829,22 @@ bool Disco::Write_Block(unsigned int i, unsigned int* bloco, unsigned int size){
 
 //le os inodes do arquivo
 void Disco::Read_block(unsigned int block_num, unsigned int* blocosLidos){
-    //vai ate a posicao I onde o inode sera escrito
+    //vai ate a posicao I onde o bloco esta escrito
     int offset = BLOCK_SIZE*block_num;
     this->arquivo->seekg(this->start_blocos + (streampos)(offset));//(streampos)(BLOCK_SIZE*block_num)
     //lê o inode
     this->arquivo->read(reinterpret_cast<char*>(blocosLidos), 256*sizeof(unsigned int));
 }
+
+void Disco::Read_block(unsigned int block_num, unsigned int* blocosLidos, unsigned int numeros){
+    //vai ate a posicao I onde o bloco esta escrito
+    int offset = BLOCK_SIZE*block_num;
+    this->arquivo->seekg(this->start_blocos + (streampos)(offset));//(streampos)(BLOCK_SIZE*block_num)
+    //lê o inode
+    this->arquivo->read(reinterpret_cast<char*>(blocosLidos), numeros*sizeof(unsigned int));
+}
+
+//printar blocos
 
 void Disco::Printar_Bloco(unsigned int bloco_num){
     if(bloco_num > QNT_BLOCOS){return;}
@@ -734,6 +866,20 @@ void Disco::Printar_Bloco(unsigned int bloco_num, int indice){
     delete[] block_read;
 }
 
+void Disco::Printar_Bloco(unsigned int bloco_num, int start, int end){
+    if(bloco_num > QNT_BLOCOS){return;}
+    unsigned int* block_read = new(std::nothrow)unsigned int[256];
+    int fim = std::min(end, 256);
+    this->Read_block(bloco_num, block_read);
+    for (int i = start; i < end; i++)
+    {
+        std::cout << block_read[i] << " ";
+    }
+    delete[] block_read;
+}
+
+//fim printar blocos
+
 unsigned int Disco::Get_Bloco_Aux(unsigned int bloco_num, int indice){
     unsigned int* block_read = new(std::nothrow)unsigned int[256];
     this->Read_block(bloco_num, block_read);
@@ -749,18 +895,6 @@ void Disco::Set_Bloco_Aux(unsigned int bloco_num, int indice, unsigned int val){
     this->Write_Block(bloco_num, block_read, 256);
     delete[] block_read;
     return;
-}
-
-void Disco::Printar_Bloco(unsigned int bloco_num, int start, int end){
-    if(bloco_num > QNT_BLOCOS){return;}
-    unsigned int* block_read = new(std::nothrow)unsigned int[256];
-    int fim = std::min(end, 256);
-    this->Read_block(bloco_num, block_read);
-    for (int i = start; i < end; i++)
-    {
-        std::cout << block_read[i] << " ";
-    }
-    delete[] block_read;
 }
 
 //arquivos
@@ -838,8 +972,8 @@ void Disco::Write_File_index(std::string nome, unsigned int indice, unsigned int
 void Disco::Add_File_index_aux(std::string nome){
     //define as variaveis
     Inode node = this->Read_inode(nome);
-    long int tamanho = this->Real_Size_Inode(nome);
-    long int qntBlocos = this->Size_Inode(nome);
+    long int tamanho = this->Real_Size_Inode(nome)/4;
+    long int qntBlocos = this->Size_Inode(nome)/4;
     int last_pos = tamanho-1;
     //vou para o inode da ultima posicao
     int blocoIndex = floor((float)last_pos/256.0); //16.384
@@ -859,6 +993,26 @@ void Disco::Add_File_index_aux(std::string nome){
     unsigned int size_inode = *(reinterpret_cast<unsigned int*>(node.size));
     if(size_inode == (unsigned int)16384){
         //se ele for = (unsigned int)16384 esta cheio
+        //cria o inode
+        
+        unsigned int nxt = QNT_INODES;
+        unsigned int bloco = this->Ask_bloco();if(bloco >= QNT_BLOCOS){return;}
+        unsigned int inodeEndr = this->Ask_inode();if(inodeEndr >= QNT_INODES){return;}
+        vector<unsigned int> blocos;blocos.push_back(bloco);
+        //std::cout << "inode Endr: " << inodeEndr << "\n";
+        
+        this->Cria_Escrever_inode(inodeEndr, std::string(""), 1, nxt, blocos.data(), 1, 0);
+        this->tamanho_livre -=4;
+        node.set_next(inodeEndr);
+        if(next < QNT_INODES){ //nao estou no primeiro inode
+            this->Write_Inode(next, node);
+            std::cout << "node escrito em:" << next << "\n";
+        }else{//estou no primeiro inode
+            int indice = this->Get_inode_index(nome);
+            this->Write_Inode(indice, node);
+            std::cout << "node escrito em:" << indice << "\n";
+        }
+        return;
     }else{
         //se nao
         //ele tem bloco livre?
@@ -889,16 +1043,38 @@ void Disco::Add_File_index_aux(std::string nome){
                 std::cout << "escrito em:" << indice << "\n";
             }
             return; //-> retorna
-            
         }else{
             //nao tem bloco livre
+            unsigned int bloco = this->Ask_bloco();if(bloco >= QNT_BLOCOS){return;}
+            //cria o bloco
+            this->Book_bloco(bloco);
+            //aponta inode para o bloco
+            for(int i = 0; i < 64; i++){
+                unsigned int valor = *(reinterpret_cast<unsigned int*>(node.blocos + (i*4)));
+                if(valor >= QNT_BLOCOS){
+                    node.set_bloco(bloco, i); //recebe valor, indice
+                    break;
+                }
+            }
+            //-> aumenta o tamanho em 1
+            node.set_Size(size_inode+1);
+            //-> diminui o espaco livre em 4
+            this->tamanho_livre -=4;
+            //escreve o inode no disco
+            if(next < QNT_INODES){
+                this->Write_Inode(next, node);
+                std::cout << "escrito em:" << next << "\n";
+            }else{
+                int indice = this->Get_inode_index(nome);
+                this->Write_Inode(indice, node);
+                std::cout << "escrito em:" << indice << "\n";
+            }
+            return;
         }
     }
-    
-    
-   
+
         
-        
+    
         
         
         
@@ -913,11 +1089,133 @@ void Disco::Add_File_index_aux(std::string nome){
 
 void Disco::Add_File_index(std::string nome, unsigned int valor){
     this->Add_File_index_aux(nome);
-    int indice = this->Real_Size_Inode(nome);
-    this->Write_File_index(nome, (indice/4)-1, valor);
+    int indice = this->Real_Size_Inode(nome)/4;
+    this->Write_File_index(nome, indice-1, valor);
+}
+
+/////// PAGINACAO
+
+unsigned int Disco::Read_page_qnt(){
+    //vai ate a posicao I onde o bloco esta escrito
+    this->arquivo->seekg(this->start_pages);
+    unsigned int val_retorno;
+    //lê o inode
+    this->arquivo->read(reinterpret_cast<char*>(val_retorno), sizeof(unsigned int));
+}
+
+void Disco::Read_page(unsigned int page_num, unsigned int* pagesLidas){
+    //vai ate a posicao I onde o bloco esta escrito
+    int offset = (BLOCK_SIZE*page_num)+4;
+    this->arquivo->seekg(this->start_pages + (streampos)(offset));
+    //lê a pagina
+    this->arquivo->read(reinterpret_cast<char*>(pagesLidas), 256*sizeof(unsigned int));
+}
+
+void Disco::Read_page(unsigned int page_num, unsigned int* pagesLidas, unsigned int qnt){
+     //vai ate a posicao I onde o bloco esta escrito
+     int offset = BLOCK_SIZE*page_num+4;
+     this->arquivo->seekg(this->start_pages + (streampos)(offset));
+     //lê a pagina
+     this->arquivo->read(reinterpret_cast<char*>(pagesLidas), qnt*sizeof(unsigned int));
+}
+
+void Disco::Set_page_qnt(unsigned int qnt){
+    this->arquivo->seekg(this->start_pages);
+    this->arquivo->write(reinterpret_cast<char*>(qnt), sizeof(unsigned int));
+}
+
+void Disco::Set_page(unsigned int page_num, unsigned int* page){
+    int offset = (BLOCK_SIZE*page_num)+4;
+    this->arquivo->seekg(this->start_pages + (streampos)(offset));
+    this->arquivo->write(reinterpret_cast<char*>(page), 256*sizeof(unsigned int));
+}
+
+void Disco::Set_page(unsigned int page_num, unsigned int* page, unsigned int size){
+    int offset = (BLOCK_SIZE*page_num)+4;
+    this->arquivo->seekg(this->start_pages + (streampos)(offset));
+    this->arquivo->write(reinterpret_cast<char*>(page), size*sizeof(unsigned int));
+}
+
+
+/////Huge Pages
+
+void Disco::unload_mem(std::string nome){
+    Inode node = this->Read_inode(nome);
+    unsigned int size = this->Real_Size_Inode(nome);
+    unsigned int escritos = size;
+    unsigned int offset = 0;
+    while(true){
+        //carrego os valores no bloco
+        for(int i = 0; i < 64; i++){
+            unsigned int valor = *(reinterpret_cast<unsigned int*>(node.blocos + (i*4)));
+            if(valor >= QNT_BLOCOS){
+                break;
+            }else{
+                if(escritos <= 256){
+                    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+(offset*256);
+                    Write_Block(valor, ponteiro, escritos);
+                    break;
+                }else{
+                    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+(offset*256);
+                    Write_Block(valor, ponteiro, 256);
+                    escritos-= 256;
+                }
+            }
+            offset++;
+        }
+        int proximo = *(reinterpret_cast<unsigned int*>(node.next));
+        if(proximo >= QNT_INODES){break;}
+        else{node = this->Read_inode(proximo);} //vai para o proximo inode se existir
+    }
+}
+
+void Disco::unload_mem(unsigned int bloco, unsigned int offset, unsigned int size){
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+(offset*256);
+    Write_Block(bloco, ponteiro, size);
+}
+
+//funcoes memoria hugepages
+void Disco::Load_to_Mem(unsigned int bloco, unsigned int memoffset){
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    this->Read_block(bloco, ponteiro);
+}
+
+void Disco::Load_to_Mem(unsigned int bloco, unsigned int memoffset, unsigned int qnt){
+    // Ler o bloco do disco
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    this->Read_block(bloco, ponteiro, qnt);
+}
+
+//funcoes memoria hugepages
+void Disco::Load_Page_to_Mem(unsigned int page, unsigned int memoffset){
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    this->Read_page(page, ponteiro);
+}
+
+void Disco::Load_Page_to_Mem(unsigned int page, unsigned int memoffset, unsigned int qnt){
+    // Ler o bloco do disco
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    this->Read_page(page, ponteiro, qnt);
+}
+
+void Disco::Load_to_Mem(unsigned int* blocos, unsigned int qnt, unsigned int memoffset){
+    if(memoffset >= 524.287){return;}
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    for (int i = 0; i < qnt; i++)
+    {
+        this->Read_block(blocos[i], ponteiro+(i*256));
+    }
 }
 
 //FUNCOES REQUERIDAS
+
+///Merge sort externo
+void Merge_sort_externo(std::string nome, unsigned int* blocos, unsigned int qnt_blocos, unsigned int qnt_numeros){
+    //unsigned int qnt_part = 
+
+}
+
+
 
 /*passar o nome do arquivo e o tamanho -> quantos numeros escrever*/
 void Disco::Cria_Arquivo(std::string nome, unsigned int size){
@@ -931,16 +1229,16 @@ void Disco::Cria_Arquivo(std::string nome, unsigned int size){
         return;
     }
     //pega os blocos que seram usados 
-    //vector<unsigned int> blocos;
     unsigned int* blocos = new(std::nothrow)unsigned int[qntBlocos];
     for (unsigned int i = 0; i < qntBlocos; i++)
     {
+        //std::cout << "\rProgresso alocando blocos: " << i << "/" << qntBlocos << std::flush;
         blocos[i] = this->Ask_bloco();if(blocos[i] >= QNT_BLOCOS){ delete[] blocos; return;}
         this->Book_bloco(blocos[i]);
     }
     std::cout << "qnt blocos: " << qntBlocos << "\n";
 
-    //quantos inodes sao precisos para guardar o bloco /////////////////////////////////
+    /////////////////////////////////////////////////////quantos inodes sao precisos para guardar o bloco /////////////////////////////////
     int qntInodes = ceil(qntBlocos/64.0);
     if(qntInodes > (QNT_INODES - inode_usados)){
         std::cout << "sem inodes disponiveis\n";
@@ -948,16 +1246,15 @@ void Disco::Cria_Arquivo(std::string nome, unsigned int size){
     }
     std::cout << "qnt inodes: " << qntInodes << "\n";
     //endereco dos inodes
-    //vector<unsigned int> endrInodes;
     unsigned int* endrInodes = new(std::nothrow)unsigned int[qntInodes];
     for (int i = 0; i < qntInodes; i++)
     {
+        //std::cout << "\rProgresso alocando inodes: " << i << "/" << qntInodes << std::flush;
         endrInodes[i] = this->Ask_inode();if(endrInodes[i] >= QNT_INODES){delete[] blocos; delete[] endrInodes; return;}
         this->Book_inode(endrInodes[i]);
-        //endrInodes.push_back(inodeA);
     }
 
-    //monta o inode raiz //////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////monta o inode raiz //////////////////////////////////////////////////////////////
     int offset_blocos_data = 0;
     unsigned int nxt = QNT_INODES;
     if(qntInodes > 1){nxt = endrInodes[1];}
@@ -969,8 +1266,9 @@ void Disco::Cria_Arquivo(std::string nome, unsigned int size){
         size -= 16384;
         qntBlocos -= 64;
     }
-    ///Monta inodes folhas ////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////Monta inodes folhas ////////////////////////////////////////////////////////////
     for (int i = 1; i < qntInodes; i++){
+        //std::cout << "\rProgresso montando inodes: " << i << "/" << qntInodes << std::flush;
         std::string folhaNome = "";
         if(i+1 < qntInodes){
             nxt = endrInodes[i+1];
@@ -989,15 +1287,21 @@ void Disco::Cria_Arquivo(std::string nome, unsigned int size){
         }
         //escreve inode
     }
-    ///////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///// PREENCHE OS BLOCOS COM NUMEROS INTEIROS ALEATORIOS
     int indice_bloco = 0;
     int qnt_escritos = 0;
     unsigned int* bloco_u = new(std::nothrow)unsigned int[256];
     while(size_backup > 0){
-        std::cout << "numeros gerados\n";
-        Gerar_numeros(bloco_u, size_backup);
+        //std::cout << "\rProgresso preechendo blocos: " << indice_bloco << "/" << qntBlocos_backup << std::flush;
+        //std::cout << "numeros gerados\n";
+        if(size_backup <= 256){
+            Gerar_numeros(bloco_u, size_backup);
+        }else{
+            Gerar_numeros(bloco_u, 256);
+        }
         this->Write_Block(blocos[indice_bloco], bloco_u, 256);
+        
         indice_bloco++;
         size_backup -= 256;
     }
@@ -1007,7 +1311,7 @@ void Disco::Cria_Arquivo(std::string nome, unsigned int size){
     delete[] endrInodes;
     //////////////////////////////////////////////////////////////////////////////////
     tamanho_livre -= (qntBlocos_backup*1024);
-    std::cout << "arquivo escrito\n";
+    std::cout << "\narquivo escrito\n";
     return;
 }
 
@@ -1180,6 +1484,57 @@ void Disco::Print_space(){
               << "Tamanho disponivel: " << (int)(this->tamanho_livre/1024) << " MB\n";
 }
 
+void Disco::Ordenar_Arquivo(std::string name){
+    //pega o inode
+    //comeca a calcular o tempo
+    struct timespec ts; 
+    clock_gettime(CLOCK_REALTIME, &ts);
+    long long inico_funcao = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+
+    Inode node = this->Read_inode(name);
+    unsigned int qnt_numeros = this->Real_Size_Inode(name)/4;
+    unsigned int carregados = qnt_numeros;
+    if(qnt_numeros > (unsigned int)35430656){std::cout << "não eh possivel ordenar arquivos desse tamanho\n"; return;}
+    if(qnt_numeros < (unsigned int)524288){
+        unsigned int offset = 0;
+        //ordena direto na memoria
+        while(true){
+            //carrega todos os blocos na memoria
+            for(int i = 0; i < 64; i++){
+                unsigned int valor = *(reinterpret_cast<unsigned int*>(node.blocos + (i*4)));
+                if(valor >= QNT_BLOCOS){
+                    break;
+                }else{
+                    if(carregados <= 256){
+                        this->Load_to_Mem(valor, (offset*256), carregados);
+                        break;
+                    }else{
+                        this->Load_to_Mem(valor, (offset*256), 256);
+                        carregados-= 256;
+                    }
+                }
+                offset++;
+            }
+            int proximo = *(reinterpret_cast<unsigned int*>(node.next));
+            if(proximo >= QNT_INODES){break;}
+            else{node = this->Read_inode(proximo);} //vai para o proximo inode se existir
+        }
+        heapSort(reinterpret_cast<unsigned int*>(this->memory_addr), qnt_numeros);
+        //joga de volta no inode
+        this->unload_mem(name);
+        
+        clock_gettime(CLOCK_REALTIME, &ts);
+        long long fim_funcao = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+        printf("[ordenar]Tempo de execulcao: %.2lld MS\n", fim_funcao-inico_funcao);
+        return;
+    }else{
+        //merge sort externo
+
+    }
+    //copia os valores do paginacao para o inode de 256 em 256;
+}
+
+
 int Disco::Montar()
 {
     this->arquivo = new fstream(this->path, std::ios::in | std::ios::out | std::ios::binary);
@@ -1204,11 +1559,21 @@ int Disco::Desmontar()
         printf("Disco Desmontado\n");
         montado = false;
         this->arquivo->close();
+        if (munmap(this->memory_addr, HUGEPAGE_SIZE) == -1) {
+            perror("munmap");
+            return 1;
+        }
+        std::cout << "memoria liberada\n";
         return 0;
     }
 }
 
-Disco::~Disco(){}
+Disco::~Disco(){
+    if (munmap(this->memory_addr, HUGEPAGE_SIZE) == -1) {
+        perror("munmap");
+    }
+    std::cout << "memoria liberada\n";
+}
 
 
 #endif

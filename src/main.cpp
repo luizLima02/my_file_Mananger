@@ -92,7 +92,8 @@ int main() {
 
     bool loop = true;
     Disco* hd = new Disco();
-    hd->Add_File_index(std::string("teste"), (unsigned int)1578);
+    if(hd->iniciado_com_sucesso == false){return 1;}
+    //hd->Add_File_index(std::string("teste"), (unsigned int)8751);
     //hd->Write_File_index(std::string("teste"), 2, (unsigned int)1578);
     //hd->Printar_Bloco(0);
     std::cout << "digite o comando:\n";
@@ -112,9 +113,12 @@ int main() {
     }else if(comand.command == READ){
         hd->Ler_Arquivo(comand.nome, comand.inicio, comand.fim);
 
+    }else if(comand.command == SORT){
+        hd->Ordenar_Arquivo(comand.nome);
+
     }else if(comand.command == EXIT_A){
         loop = false;
-        Inode inode = hd->Read_inode(comand.nome);
+        /*Inode inode = hd->Read_inode(comand.nome);
         std::cout << inode.nome << ":\n";
         vector<int> blocos;
         for(int i = 0; i < 64; i++){
@@ -128,16 +132,40 @@ int main() {
         for (int i = 0; i < blocos.size(); i++)
         {
             hd->Printar_Bloco(blocos[i]);
-        }
+        }*/
         
     
         //std::cout << inode.nome << " size: " << tamanho << "\n";
     }
+    hd->Load_to_Mem(0, 0);
+    hd->Load_to_Mem(1, 256);
+    //heapSort(reinterpret_cast<unsigned int*>(hd->memory_addr), 256);
+
     
-    //std::cout << "\n";
+    for(int i = 0; i < 2; i++){
+        unsigned int* int_ptr = reinterpret_cast<unsigned int*>(hd->memory_addr);
+        std::cout << "Bloco "<< i <<" ordenado\n";
+        for(int j = i*256; j < (i*256)+256; j++){
+            if(j%16 == 0){std::cout << "\n";}
+            //unsigned int valor = *reinterpret_cast<unsigned int*>(hd->memory_addr+(4*j));
+            std::cout << *(int_ptr+j) << " ";
+        }
+        std::cout << "\n";
+    }
+
+    //unsigned int valor = *reinterpret_cast<unsigned int*>(hd->memory_addr);
+    std::cout << "\n";
     hd->Printar_Bloco(0);
     std::cout << "\n";
-    hd->Montar();
+    /*hd->Printar_Bloco(1);
+    std::cout << "\n";
+    hd->Printar_Bloco(2);
+    std::cout << "\n";
+    hd->Printar_Bloco(3);
+    std::cout << "\n";
+    hd->Printar_Bloco(4);
+    std::cout << "\n";*/
+    
     //if(hd.Is_inode_free(0)){
     //    char nome[8] = "teste";
     //    hd.Cria_Arquivo(nome, 10);
@@ -205,6 +233,7 @@ int main() {
 
     printf("Hugepage desalocada com sucesso.\n");
     */
+    hd->Desmontar();
     return 0;
 }
 
