@@ -422,6 +422,8 @@ public:
     //carrega os k numeros da pagina para a memoria
     void Load_Page_to_Mem(unsigned int, unsigned int, unsigned int);
 
+    void Load_to_Mem(std::string nome, unsigned int memoffset, unsigned int start, unsigned int end);
+
     //arquivos
 
     void Listar_Arquivos();
@@ -1186,6 +1188,29 @@ void Disco::Load_to_Mem(unsigned int bloco, unsigned int memoffset, unsigned int
     this->Read_block(bloco, ponteiro, qnt);
 }
 
+
+void Disco::Load_to_Mem(std::string nomeArquivo, unsigned int memoffset, unsigned int inicio, unsigned int fim){
+    // Ler o bloco do disco
+    //unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    //this->Read_block(bloco, ponteiro, qnt);
+    int indice = 0;
+    int start = std::min(inicio, fim);
+    int end = std::max(inicio, fim);
+    int local_offset = 0;
+    if(start == end){
+        unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+        ponteiro[0] = Read_File_index(nomeArquivo, inicio);
+        return;
+        //this->Read_block(valores, ponteiro, 1);
+    }
+    unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
+    for(int i = start; i < end; i++){
+        ponteiro[indice] =  Read_File_index(nomeArquivo, i);
+        indice++;
+    }
+    return;
+}
+
 //funcoes memoria hugepages
 void Disco::Load_Page_to_Mem(unsigned int page, unsigned int memoffset){
     unsigned int* ponteiro = reinterpret_cast<unsigned int*>(this->memory_addr)+memoffset;
@@ -1211,8 +1236,16 @@ void Disco::Load_to_Mem(unsigned int* blocos, unsigned int qnt, unsigned int mem
 
 ///Merge sort externo
 void Merge_sort_externo(std::string nome, unsigned int* blocos, unsigned int qnt_blocos, unsigned int qnt_numeros){
-    //unsigned int qnt_part = 
-
+    unsigned int qnt_part = qnt_numeros/524288;
+    unsigned int* particoes = new(std::nothrow)unsigned int[qnt_part];
+    for(int i = 0; i < qnt_part; i++){
+        particoes[i] = i*524288;
+    }
+    //spliting fase
+    //para cada particao k de numeros
+    //carrega os numeros de k para a memoria
+    //ordena
+    //grava os numeros de volta
 }
 
 
